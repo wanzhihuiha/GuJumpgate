@@ -465,7 +465,7 @@ test('hosted checkout automation completes plus-checkout-create after success pa
   });
 });
 
-test('hosted checkout verification popup delay waits before fetching verification code', async () => {
+test('PayPal hosted checkout verification popup delay waits before fetching verification code', async () => {
   const events = [];
   let tabUrl = 'https://pay.openai.com/c/pay/hosted_cs_live_final';
   const executor = api.createPlusCheckoutCreateExecutor({
@@ -475,7 +475,11 @@ test('hosted checkout verification popup delay waits before fetching verificatio
     chrome: {
       tabs: {
         create: async () => ({ id: 80 }),
-        update: async () => {},
+        update: async (_tabId, payload) => {
+          if (payload?.url) {
+            tabUrl = payload.url;
+          }
+        },
         get: async () => ({ id: 80, url: tabUrl }),
       },
     },
@@ -510,8 +514,8 @@ test('hosted checkout verification popup delay waits before fetching verificatio
       hostedCheckoutVerificationUrl: 'https://mail.test.com/api/text-relay/eca_tr_delay',
     }),
     registerTab: async () => {},
-    sendTabMessageUntilStopped: async (_tabId, _source, message) => {
-      events.push({ type: 'tab-message', message });
+    sendTabMessageUntilStopped: async (_tabId, source, message) => {
+      events.push({ type: 'tab-message', source, message });
       if (message.type === 'CREATE_PLUS_CHECKOUT') {
         return {
           checkoutUrl: 'https://chatgpt.com/checkout/openai_ie/cs_live_final',
@@ -522,9 +526,13 @@ test('hosted checkout verification popup delay waits before fetching verificatio
         };
       }
       if (message.type === 'PLUS_CHECKOUT_GET_STATE') {
-        return { hostedVerificationVisible: true };
+        tabUrl = 'https://www.paypal.com/checkoutnow?token=hosted';
+        return { hostedVerificationVisible: false };
       }
-      if (message.type === 'RUN_HOSTED_OPENAI_CHECKOUT_STEP' && message.payload?.verificationCode) {
+      if (message.type === 'PAYPAL_HOSTED_GET_STATE') {
+        return { hostedStage: 'verification', verificationInputsVisible: true };
+      }
+      if (message.type === 'PAYPAL_RUN_HOSTED_CHECKOUT_STEP' && message.payload?.verificationCode) {
         tabUrl = 'https://chatgpt.com/payments/success';
       }
       return {};
@@ -538,6 +546,11 @@ test('hosted checkout verification popup delay waits before fetching verificatio
       const candidate = { id: 80, url: tabUrl };
       if (matcher(candidate.url, candidate)) {
         return candidate;
+      }
+      const paypalTab = { id: 80, url: 'https://www.paypal.com/checkoutnow?token=hosted' };
+      if (matcher(paypalTab.url, paypalTab)) {
+        tabUrl = paypalTab.url;
+        return paypalTab;
       }
       return { id: 80, url: 'https://pay.openai.com/c/pay/hosted_cs_live_final' };
     },
@@ -557,6 +570,7 @@ test('hosted checkout verification popup delay waits before fetching verificatio
   assert.notEqual(fetchCodeIndex, -1);
   assert.ok(popupDelayIndex < fetchCodeIndex);
   assert.equal(events.some((event) => event.type === 'log' && /按设置等待 3 秒/.test(event.message)), true);
+  assert.equal(events.some((event) => event.type === 'tab-message' && event.message.type === 'RUN_HOSTED_OPENAI_CHECKOUT_STEP' && event.message.payload?.verificationCode), false);
 });
 
 test('Plus checkout content routes billing operations through the operation delay gate', async () => {

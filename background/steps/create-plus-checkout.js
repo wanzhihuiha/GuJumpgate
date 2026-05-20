@@ -535,7 +535,6 @@
         }
         if (state?.hostedVerificationVisible && !verificationSubmitted) {
           await addLog('步骤 6：检测到 hosted checkout OpenAI 验证码弹窗，正在获取并填写验证码...', 'info');
-          await waitForHostedCheckoutVerificationPopupDelay();
           const verificationCode = await pollHostedCheckoutVerificationCode();
           const verifyResult = await sendTabMessageUntilStopped(tabId, PLUS_CHECKOUT_SOURCE, {
             type: 'RUN_HOSTED_OPENAI_CHECKOUT_STEP',
